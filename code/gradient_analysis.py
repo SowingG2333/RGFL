@@ -28,7 +28,8 @@ NUM_HONEST_ROUNDS_FOR_ESTIMATION_FREERIDER = 2          # 诚实轮次数目
 ADV_ATTACK_C_PARAM = 0.5                                # 计算E(cosB)的C参数
 ADV_ATTACK_NOISE_DIM_FRACTION = 0.75                    # 添加噪声的维度比例
 
-# 设置随机种子，确保可重复性
+
+# 随机种子设置函数
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -39,7 +40,6 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-set_seed(RANDOM_SEED)
 
 # 模型定义
 class MLP(nn.Module):
@@ -56,11 +56,6 @@ class MLP(nn.Module):
         x = self.fc2(x)
         return x
 
-# 数据集加载
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.1307,), (0.3081,))
-])
 
 # 数据集划分
 def get_mnist_data(num_clients, iid, non_iid_alpha, data_path='./data', client_batch_size=64, test_batch_size=1000):
@@ -133,18 +128,6 @@ def get_mnist_data(num_clients, iid, non_iid_alpha, data_path='./data', client_b
     test_loader_local = DataLoader(test_dataset_full, batch_size=test_batch_size, shuffle=False, num_workers=0, pin_memory=False)
     return train_data_loaders, test_loader_local
 
-# 生成客户端和测试数据加载器
-client_data_loaders, test_loader = get_mnist_data(
-    num_clients=NUM_HONEST_CLIENTS + NUM_FREE_RIDERS,
-    iid=IID_DATA_DISTRIBUTION,
-    non_iid_alpha=NON_IID_ALPHA,
-    client_batch_size=CLIENT_BATCH_SIZE,
-    test_batch_size=TEST_BATCH_SIZE
-)
-if (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS) > 0 and not client_data_loaders:
-    raise ValueError("Failed to create client data loaders. Check data distribution logic or client count.")
-if (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS) > 0 and len(client_data_loaders) != (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS):
-    print(f"Warning: Number of created client loaders ({len(client_data_loaders)}) does not match ({NUM_HONEST_CLIENTS + NUM_FREE_RIDERS}). This might happen if some clients got 0 samples in non-IID.")
 
 # 模型训练函数
 def train_client_model(model, data_loader, epochs, lr, device):
@@ -159,6 +142,7 @@ def train_client_model(model, data_loader, epochs, lr, device):
             loss.backward()
             optimizer.step()
     return model.state_dict()
+
 
 # 模型评估函数
 def test_model(model, test_loader, device):
@@ -176,9 +160,11 @@ def test_model(model, test_loader, device):
     accuracy = 100. * correct / len(test_loader.dataset)
     return accuracy, test_loss
 
+
 # 展平模型参数
 def flatten_params(model_state_dict):
     return torch.cat([p.view(-1) for p in model_state_dict.values()])
+
 
 # 还原模型参数
 def unflatten_params(flat_params, target_model_state_dict_template):
@@ -191,11 +177,13 @@ def unflatten_params(flat_params, target_model_state_dict_template):
         current_pos += num_elements
     return new_state_dict
 
+
 # 计算参数变化量
 def calculate_update_delta(old_state_dict, new_state_dict, device):
     old_flat = flatten_params(old_state_dict).to(device)
     new_flat = flatten_params(new_state_dict).to(device)
     return new_flat - old_flat
+
 
 # 参与者基类
 class Participant:
@@ -206,11 +194,16 @@ class Participant:
         self.current_model_state = None         # 当前模型状态
         self.current_update_flat = None         # 上一次更新的扁平化参数
 
+
+    # 设置当前模型状态
     def set_model_state(self, global_model_state):
         self.current_model_state = copy.deepcopy(global_model_state)
 
+
+    # 获取当前更新
     def get_update(self):
         return self.current_update_flat
+
 
 # 诚实客户端
 class HonestClient(Participant):
@@ -220,6 +213,8 @@ class HonestClient(Participant):
         self.epochs = epochs
         self.lr = lr
 
+
+    # 计算更新
     def compute_update(self, global_model_state_dict):
         self.set_model_state(global_model_state_dict)
         local_model = MLP().to(self.device)
@@ -229,6 +224,7 @@ class HonestClient(Participant):
         
         self.current_update_flat = calculate_update_delta(global_model_state_dict, trained_local_state_dict, self.device)
         return self.current_update_flat
+
 
 # 搭便车者
 class FreeRider(Participant):
@@ -253,11 +249,13 @@ class FreeRider(Participant):
         self.second_last_global_update_for_scaled_delta_flat = None
         self.expected_cos_beta_history = []
     
+
     # 更新历史全局模型梯度的l2范数
     def _update_estimation_history(self, server_g_t_flat_history):
         if server_g_t_flat_history and len(server_g_t_flat_history) > 0:
             g_t_norm = torch.linalg.norm(server_g_t_flat_history[-1]).item()
             self.global_model_norm_diff_history_for_estimation.append(g_t_norm)
+
 
     # 估计lambda_bar
     def _estimate_lambda_bar(self):
@@ -274,11 +272,14 @@ class FreeRider(Participant):
                 print(f"DEBUG: Rider {self.id} error estimating lambda: {e}. Keep original: {self.estimated_lambda_bar}")
                 pass
 
+    # 计算预期的余弦相似度
     def _calculate_expected_cosine_beta(self, current_round_num):        
         exp_term = np.exp(2 * self.estimated_lambda_bar * current_round_num)
         cos_beta = (self.adv_attack_c_param**2) / (self.adv_attack_c_param**2 + exp_term)
         return max(0.0, min(1.0, cos_beta))
 
+
+    # 计算更新
     def compute_update(self, current_round_num, global_model_state_dict, server_g_t_flat_history, num_total_clients_n):
         self.set_model_state(global_model_state_dict)
         self._update_estimation_history(server_g_t_flat_history)
@@ -393,6 +394,7 @@ class FreeRider(Participant):
         self.current_update_flat = fabricated_update_flat.detach().clone()
         return self.current_update_flat
 
+
 # 服务器类
 class Server:
     def __init__(self, initial_model_state_dict, honest_clients, free_riders, test_loader, device):
@@ -400,45 +402,41 @@ class Server:
         self.honest_clients = honest_clients
         self.free_riders = free_riders
         self.all_clients = honest_clients + free_riders
-        random.shuffle(self.all_clients) # Shuffle client order
+        random.shuffle(self.all_clients)
         self.test_loader = test_loader
         self.device = device
         
-        # History for statistics
         self.global_model_test_accuracies = []
         self.global_model_test_losses = []
-        self.server_g_t_flat_history = [] # History of actual global updates: theta_t - theta_{t-1}
+        self.server_g_t_flat_history = []
         
         self.stats_honest_l2_norms = [] 
         self.stats_freerider_l2_norms = []
         self.stats_honest_stds = []
         self.stats_freerider_stds = []
-        self.stats_freerider_expected_cos_beta = [[] for _ in free_riders] # Store attacker's internal E(cos_beta)
+        self.stats_freerider_expected_cos_beta = [[] for _ in free_riders]
 
-        # New stats: Cosine similarity of client updates w.r.t. average honest update
-        self.stats_honest_to_avg_honest_cosine_sims = []    # List of lists (per round, per honest client)
-        self.stats_freerider_to_avg_honest_cosine_sims = [] # List of lists (per round, per free-rider)
-        self.stats_l2_norm_of_avg_honest_update = [] # L2 norm of the average honest update
-        self.stats_std_of_avg_honest_update = []     # STD of the average honest update
+        self.stats_honest_to_avg_honest_cosine_sims = []    
+        self.stats_freerider_to_avg_honest_cosine_sims = [] 
+        self.stats_l2_norm_of_avg_honest_update = [] 
+        self.stats_std_of_avg_honest_update = []     
 
 
+    # 聚合客户端更新，采用简单的FedAvg方法
     def aggregate_updates(self, client_updates_flat, client_weights=None):
-        # Aggregates client updates (FedAvg).
         if not client_updates_flat:
             return self.global_model_state_dict
 
-        if client_weights is None: # Simple FedAvg
+        if client_weights is None:
             client_weights = [1.0 / len(client_updates_flat)] * len(client_updates_flat)
         
         aggregated_update_flat = torch.zeros_like(client_updates_flat[0], device=self.device)
         for weight, update_flat in zip(client_weights, client_updates_flat):
             aggregated_update_flat += weight * update_flat
         
-        # Apply aggregated update to global model
         current_global_flat = flatten_params(self.global_model_state_dict).to(self.device)
         new_global_flat = current_global_flat + aggregated_update_flat
         
-        # Store the actual global model difference for the free-rider's observation
         self.server_g_t_flat_history.append(aggregated_update_flat.detach().clone())
 
         self.global_model_state_dict = unflatten_params(new_global_flat, self.global_model_state_dict)
@@ -469,7 +467,7 @@ class Server:
                 if client.expected_cos_beta_history:
                      self.stats_freerider_expected_cos_beta[fr_idx].append(client.expected_cos_beta_history[-1])
                 else:
-                     self.stats_freerider_expected_cos_beta[fr_idx].append(0.0) # or np.nan
+                     self.stats_freerider_expected_cos_beta[fr_idx].append(0.0)
 
         self.aggregate_updates(client_updates_flat_this_round)
 
@@ -505,15 +503,14 @@ class Server:
             self.stats_l2_norm_of_avg_honest_update.append(np.nan)
             self.stats_std_of_avg_honest_update.append(np.nan)
 
-
         current_round_honest_to_avg_sims = []
         if avg_honest_update_flat is not None and torch.linalg.norm(avg_honest_update_flat) > 1e-9:
             for honest_update in honest_client_updates_this_round:
-                if torch.linalg.norm(honest_update) > 1e-9: # Avoid division by zero for cosine sim
+                if torch.linalg.norm(honest_update) > 1e-9: 
                     sim = torch.nn.functional.cosine_similarity(honest_update, avg_honest_update_flat, dim=0).item()
                     current_round_honest_to_avg_sims.append(sim)
                 else:
-                    current_round_honest_to_avg_sims.append(0.0) # or np.nan if vector is zero
+                    current_round_honest_to_avg_sims.append(0.0) 
         self.stats_honest_to_avg_honest_cosine_sims.append(current_round_honest_to_avg_sims)
 
         current_round_freerider_to_avg_sims = []
@@ -523,8 +520,31 @@ class Server:
                     sim = torch.nn.functional.cosine_similarity(fr_update, avg_honest_update_flat, dim=0).item()
                     current_round_freerider_to_avg_sims.append(sim)
                 else:
-                    current_round_freerider_to_avg_sims.append(0.0) # or np.nan
+                    current_round_freerider_to_avg_sims.append(0.0) 
         self.stats_freerider_to_avg_honest_cosine_sims.append(current_round_freerider_to_avg_sims)
+
+
+# 设置随机种子，确保实验可重复
+set_seed(RANDOM_SEED)
+
+# 数据集加载
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.1307,), (0.3081,))
+])
+
+# 生成客户端和测试数据加载器
+client_data_loaders, test_loader = get_mnist_data(
+    num_clients=NUM_HONEST_CLIENTS + NUM_FREE_RIDERS,
+    iid=IID_DATA_DISTRIBUTION,
+    non_iid_alpha=NON_IID_ALPHA,
+    client_batch_size=CLIENT_BATCH_SIZE,
+    test_batch_size=TEST_BATCH_SIZE
+)
+if (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS) > 0 and not client_data_loaders:
+    raise ValueError("Failed to create client data loaders. Check data distribution logic or client count.")
+if (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS) > 0 and len(client_data_loaders) != (NUM_HONEST_CLIENTS + NUM_FREE_RIDERS):
+    print(f"Warning: Number of created client loaders ({len(client_data_loaders)}) does not match ({NUM_HONEST_CLIENTS + NUM_FREE_RIDERS}). This might happen if some clients got 0 samples in non-IID.")
 
 
 if __name__ == "__main__":
@@ -566,12 +586,12 @@ attack_phase_start_round_index = NUM_HONEST_ROUNDS_FOR_ESTIMATION_FREERIDER
 # 创建攻击阶段的轮次x轴 (1-based for plotting)
 # 例如，如果 NUM_ROUNDS = 100, attack_phase_start_round_index = 2,
 # 那么我们想绘制的是第3轮到第100轮的数据。
-#对应的x轴刻度是 3, 4, ..., 100
+# 对应的x轴刻度是 3, 4, ..., 100
 if attack_phase_start_round_index < NUM_ROUNDS:
     rounds_x_attack_phase = np.arange(attack_phase_start_round_index + 1, NUM_ROUNDS + 1)
     num_plot_rounds = len(rounds_x_attack_phase) # 实际绘制的轮数
 
-    plt.figure(figsize=(18, 12)) # 调整为2x2布局可能更紧凑，如果只有4个图
+    plt.figure(figsize=(18, 12))
 
     # 定义颜色
     honest_client_color = 'royalblue'
@@ -678,7 +698,7 @@ if attack_phase_start_round_index < NUM_ROUNDS:
     plt.title(f'Cosine Similarity (Attack Phase: Rounds {attack_phase_start_round_index + 1}-{NUM_ROUNDS})')
     plt.xlabel('Communication Round')
     plt.ylabel('Cosine Similarity Value')
-    plt.ylim(0, 1.1) # 根据您的代码，Y轴下限为0
+    plt.ylim(0, 1.1) # 根据代码，Y轴下限为0
     plt.legend()
     plt.grid(True)
 

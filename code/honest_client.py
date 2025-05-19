@@ -36,13 +36,13 @@ class HonestClient(Participant):
         self.optimizer = None
         self.perf_before_local_train, self.perf_after_local_train = 0.0, 0.0
         # 初始化反向拍卖参数
-        self.init_commit_scaling_factor = init_commit_scaling_factor                        # 承诺缩放因子
-        self.successful_commitments_count = 0                                               # 成功满足承诺的次数
-        self.total_evaluated_rounds_count = 0                                               # 评估的总轮次
-        self.adapt_bid_adj_intensity = float(adapt_bid_adj_intensity)                       # 适应性承诺调整强度
-        self.adapt_bid_max_delta = float(adapt_bid_max_delta)                               # 适应性承诺最大调整增量
-        self.min_commit_scaling_factor = float(min_commit_scaling_factor)                   # 最小承诺缩放因子
-        self.commit_decay_rate = float(commit_decay_rate)                                   # 承诺衰减率
+        self.init_commit_scaling_factor = init_commit_scaling_factor        # 承诺缩放因子
+        self.successful_commitments_count = 0                               # 成功满足承诺的次数
+        self.total_evaluated_rounds_count = 0                               # 评估的总轮次
+        self.adapt_bid_adj_intensity = float(adapt_bid_adj_intensity)       # 适应性承诺调整强度
+        self.adapt_bid_max_delta = float(adapt_bid_max_delta)               # 适应性承诺最大调整增量
+        self.min_commit_scaling_factor = float(min_commit_scaling_factor)   # 最小承诺缩放因子
+        self.commit_decay_rate = float(commit_decay_rate)                   # 承诺衰减率
     
 
     # 评估模型

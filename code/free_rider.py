@@ -14,16 +14,16 @@ class FreeRider(Participant):
         # 初始化父类
         super().__init__(id, "free_rider", init_rep, tra_round_num, device)
         # 初始化搭便车策略参数
-        self.est_round_num = est_round_num
-        self.atk_c_param = atk_c_param                        
-        self.atk_noise_dim = atk_noise_dim
-        self.atk_est_noise_std = atk_est_noise_std
-        self.est_lambda_bar = None
-        self.est_cos_beta = None 
-        self.global_norm_diff_history = [] 
-        self.atk_phase = "parameter_estimation"
-        self.last_gt = None 
-        self.sec_last_gt = None
+        self.est_round_num = est_round_num          # 估计阶段的轮次
+        self.atk_c_param = atk_c_param              # 攻击参数 c                  
+        self.atk_noise_dim = atk_noise_dim          # 添加噪声的维度比例
+        self.atk_est_noise_std = atk_est_noise_std  # 估计阶段的噪声标准差
+        self.est_lambda_bar = None                  # 估计的 lambda_bar
+        self.est_cos_beta = None                    # 估计的 cos(beta)
+        self.global_norm_diff_history = []          # 全局梯度范数差历史
+        self.atk_phase = "parameter_estimation"     # 攻击阶段，初始为参数估计阶段 
+        self.last_gt = None                         # 上一轮全局梯度
+        self.sec_last_gt = None                     # 上上轮全局梯度                     
     
 
     # 更新估计历史
@@ -117,12 +117,14 @@ class FreeRider(Participant):
 
     # 投标
     def submit_bid(self, highest_effect, lowest_effect, lowest_honest_promise, avg_honest_promise):
-        # 蛰伏阶段
+        # 参数估计阶段
         if self.atk_phase == "parameter_estimation":
+            # 如果处于参数估计阶段，使用最低诚实承诺和最低性价比投标，避免被选中
             self.bid['promise'] = lowest_honest_promise * random.uniform(0.8, 1.0) 
             self.bid['reward'] = (self.bid['promise'] / lowest_effect) * random.uniform(1.0, 1.2)
         # 攻击阶段    
         else: 
+            # 如果处于攻击阶段，使用平均诚实承诺和最高性价比投标，试图被选中
             self.bid['promise'] = avg_honest_promise
             self.bid['reward'] = (self.bid['promise'] / highest_effect) * random.uniform(0.8, 1.0)
         

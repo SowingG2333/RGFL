@@ -7,7 +7,7 @@ import numpy as np
 import copy
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-import json # 新增：导入json库用于保存数据
+import json
 
 class Simulation:
     def __init__(self, params_X):
@@ -73,6 +73,8 @@ class Simulation:
             "cumulative_tir_history": []  # 每轮结束时累计的真实激励率
         }
 
+
+    # 初始化环境，包括全局模型、数据加载器和参与者
     def initialize_environment(self):
         print("初始化环境中...")
         initial_global_model = Global_Model()
@@ -188,6 +190,7 @@ class Simulation:
                         self.client_reputation_history[p_item.id] = [p_item.reputation]
 
 
+    # 更新 M_t 值，根据当前参与者的声誉和更新情况
     def update_M_t(self):
         if self.current_round == 0 or not self.participants:
             return
@@ -244,6 +247,7 @@ class Simulation:
         self.M_t = min(self.M_t, len(self.participants)) 
 
 
+    # 将梯度字典展平为一维张量
     def _flatten_gradient_dict(self, gradient_dict):
         if gradient_dict is None or not isinstance(gradient_dict, dict):
             return None
@@ -258,6 +262,8 @@ class Simulation:
             print(f"Error flattening gradient dict: {e}")
             return None
 
+
+    # 运行一轮模拟
     def run_one_round(self):
         self.current_round += 1
         m_t_for_this_round = self.M_t
@@ -451,6 +457,8 @@ class Simulation:
         
         return self.check_termination_condition()
 
+
+    # 检查终止条件
     def check_termination_condition(self):
         if not self.participants: 
             print("没有参与者，终止模拟。")
@@ -489,6 +497,8 @@ class Simulation:
                     self.all_fr_eliminated_logged = True 
         return False
 
+
+    # 保存模拟统计数据到 JSON 文件
     def save_simulation_stats(self, filename="simulation_results.json"):
         """
         将模拟过程中收集的统计数据保存到 JSON 文件。
@@ -524,19 +534,18 @@ class Simulation:
         final_data_to_save = {
             "simulation_parameters": self.params_X, 
             "simulation_summary": { 
-                "termination_round": self.termination_round, 
-                "total_incentive_cost_final": self.total_rewards_paid, 
-                "real_incentive_cost_final": self.rewards_paid_to_honest_clients, 
-                "false_positive_rate_final": final_fpr, 
-                "global_model_accuracy_final": self.final_global_model_performance, 
-                "true_incentive_rate_final": final_tir, 
-                "num_total_participants_config": self.num_total_participants, 
-                "num_honest_clients_config": self.num_honest_clients, 
-                "num_free_riders_config": self.num_free_riders, 
+                "termination_round": self.termination_round, # 终止轮数
+                "total_incentive_cost_final": self.total_rewards_paid, # 总激励开销
+                "real_incentive_cost_final": self.rewards_paid_to_honest_clients, # 支付给诚实客户端的激励开销
+                "false_positive_rate_final": final_fpr, # 诚实客户端误判率
+                "global_model_accuracy_final": self.final_global_model_performance, # 最终全局模型准确率
+                "true_incentive_rate_final": final_tir, # 真实激励率 (诚实客户端奖励占比)
+                "num_total_participants_config": self.num_total_participants, # 总参与者数
+                "num_honest_clients_config": self.num_honest_clients, # 诚实客户端数
+                "num_free_riders_config": self.num_free_riders, # 搭便车者数
             },
-            "per_round_statistics": records,
-            # 修改点：新增保存各个客户端随轮次变化的声誉历史
-            "client_reputation_over_rounds": self.client_reputation_history 
+            "per_round_statistics": records, # 每轮统计数据
+            "client_reputation_over_rounds": self.client_reputation_history # 每个客户端在每轮的声誉历史
         }
 
         try:
@@ -555,7 +564,9 @@ class Simulation:
                 print(f"模拟统计数据已尝试使用备用序列化器保存到 {filename}")
             except Exception as e_fallback:
                  print(f"使用备用序列化器保存统计数据仍然失败: {e_fallback}")
+    
 
+    # 运行模拟
     def run_simulation(self):
         try: 
             self.initialize_environment()
@@ -618,6 +629,7 @@ class Simulation:
         return T_term, C_total, FPR, PFM_final, true_incentive_rate_final
 
 
+    # 评估参数以进行优化
     def evaluate_parameters_for_optimization(self):
         T_term, C_total, FPR, PFM_final, TIR = self.run_simulation()
         
@@ -633,12 +645,15 @@ class Simulation:
         }
         return objectives, [constraint_violation], other_metrics
 
+
+# 设置随机种子以确保可重复性
 def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
 
 if __name__ == "__main__":
     set_random_seed(42)
