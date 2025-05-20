@@ -8,6 +8,7 @@ import copy
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import json
+import os
 
 class Simulation:
     def __init__(self, params_X):
@@ -89,8 +90,8 @@ class Simulation:
                  raise ValueError(f"诚实客户端数据分配失败: 请求 {effective_num_honest_clients}, 得到 {len(client_datasets)}")
 
         pin_memory_flag = self.device != torch.device("cpu")
-        num_workers_val = 2 if pin_memory_flag else 0
-        test_loader = DataLoader(test_dataset_global, batch_size=128, shuffle=False, 
+        num_workers_val = os.cpu_count()
+        test_loader = DataLoader(test_dataset_global, batch_size=512, shuffle=False, 
                                  pin_memory=pin_memory_flag, num_workers=num_workers_val)
         
         self.requester = Requester(initial_global_model, test_loader, self.device,
@@ -674,7 +675,7 @@ if __name__ == "__main__":
 
         "bid_gamma_honest": 1.0, 
         "local_epochs_honest": 1, 
-        "lr_honest": 0.001,
+        "lr_honest": 0.005,
         "batch_size_honest": 64,
 
         "adaptive_bid_adjustment_intensity_gamma_honest": 0.15, 

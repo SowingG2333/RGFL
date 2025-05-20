@@ -155,20 +155,50 @@ class Requester:
         self.previous_global_model_state_flat = current_global_model_state_flat.clone()
 
 
+    # # 原版本
+    # def evaluate_global_model(self):
+    #     self.global_model.eval()
+    #     total_loss, correct, total = 0.0, 0, 0
+    #     with torch.no_grad():
+    #         for inputs, labels in self.test_loader:
+    #             inputs, labels = inputs.to(self.device), labels.to(self.device)
+    #             outputs = self.global_model(inputs)
+    #             loss = self.criterion(outputs, labels)
+    #             total_loss += loss.item() * inputs.size(0)
+    #             _, predicted = torch.max(outputs.data, 1)
+    #             total += labels.size(0)
+    #             correct += (predicted == labels).sum().item()
+    #     if total == 0: return 0.0, float('inf')
+    #     return correct / total, total_loss / total
+
+
     def evaluate_global_model(self):
-        self.global_model.eval()
+        self.global_model.eval()  # 设置模型为评估模式
         total_loss, correct, total = 0.0, 0, 0
-        with torch.no_grad():
-            for inputs, labels in self.test_loader:
+        with torch.no_grad():  # 在评估时不需要计算梯度
+            for inputs, labels in self.test_loader: # 假设 self.test_loader 是您的测试数据加载器
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
+
+                # --- 开始关键修复 ---
+                # 确保标签是 Long 类型，以适配例如 nn.CrossEntropyLoss
+                if labels.dtype != torch.long:
+                    labels = labels.to(torch.long)
+                # --- 关键修复结束 ---
+
                 outputs = self.global_model(inputs)
-                loss = self.criterion(outputs, labels)
-                total_loss += loss.item() * inputs.size(0)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        if total == 0: return 0.0, float('inf')
-        return correct / total, total_loss / total
+                loss = self.criterion(outputs, labels) # 如果criterion是CrossEntropyLoss，这里labels必须是Long
+
+                total_loss += loss.item() * inputs.size(0) # 累加总损失
+                _, predicted = torch.max(outputs.data, 1)  # 获取预测结果
+                total += labels.size(0)  # 累加样本总数
+                correct += (predicted == labels).sum().item() # 累加正确预测的样本数
+
+        if total == 0: # 处理测试集为空的情况
+            return 0.0, float('inf')
+        
+        accuracy = correct / total
+        average_loss = total_loss / total
+        return accuracy, average_loss
 
 
     def select_participants(self, participants, M_t, reputation_threshold):
@@ -246,7 +276,8 @@ class Requester:
                 "observed_increase": observed_increase
             })
 
-            if successful_verification and observed_increase > 1e-4 and gradient_detail_entry["gradient_dict"] is not None:
+            # 修改聚合逻辑，只要 observed_increase > 0.000 就进行聚合，不需要满足 promised_increase
+            if observed_increase > 0.000 and gradient_detail_entry["gradient_dict"] is not None:
                 valid_param_diffs_for_aggregation.append((gradient_detail_entry["gradient_dict"], observed_increase))
         
         if valid_param_diffs_for_aggregation:

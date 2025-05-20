@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import random
+import os
 
 # 配置参数
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -121,11 +122,11 @@ def get_mnist_data(num_clients, iid, non_iid_alpha, data_path='./data', client_b
     train_data_loaders = []
     for client_subset in client_datasets_subsets:
         if len(client_subset) > 0:
-             train_data_loaders.append(DataLoader(client_subset, batch_size=client_batch_size, shuffle=True, num_workers=0, pin_memory=False)) # num_workers=0 for simplicity with small datasets
+             train_data_loaders.append(DataLoader(client_subset, batch_size=client_batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=False)) # num_workers=0 for simplicity with small datasets
         else:
              print(f"Warning: Client dataset subset is empty. Skipping DataLoader creation for this client.")
     
-    test_loader_local = DataLoader(test_dataset_full, batch_size=test_batch_size, shuffle=False, num_workers=0, pin_memory=False)
+    test_loader_local = DataLoader(test_dataset_full, batch_size=test_batch_size, shuffle=False, num_workers=os.cpu_count(), pin_memory=False)
     return train_data_loaders, test_loader_local
 
 

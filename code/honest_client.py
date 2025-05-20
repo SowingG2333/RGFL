@@ -1,10 +1,10 @@
-from system import Participant, Global_Model
+from system import Participant
 from torch.utils.data import DataLoader, random_split
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import random
-
+import os # 用于获取 CPU 核心数
 
 class HonestClient(Participant):
     def __init__(self, id, init_rep, tra_round_num, device,
@@ -13,7 +13,7 @@ class HonestClient(Participant):
                  adapt_bid_adj_intensity,
                  adapt_bid_max_delta,
                  min_commit_scaling_factor,
-                 commit_decay_rate=0.5
+                 commit_decay_rate=0.9
                 ):
         # 初始化父类
         super().__init__(id, "honest_client", init_rep, tra_round_num, device)
@@ -27,7 +27,8 @@ class HonestClient(Participant):
             self.train_subset, self.val_subset = random_split(self.dataset, [train_len, val_len])
         # 初始化数据加载器
         pin_memory_flag = self.device != torch.device("cpu")
-        num_workers_val = 8 if pin_memory_flag else 0
+        num_workers_val = os.cpu_count()
+        self.batch_size = batch_size
         self.train_loader = DataLoader(self.train_subset, batch_size=batch_size, shuffle=True, pin_memory=pin_memory_flag, num_workers=num_workers_val, persistent_workers=True if num_workers_val > 0 else False)
         self.val_loader = DataLoader(self.val_subset, batch_size=batch_size, shuffle=False, pin_memory=pin_memory_flag, num_workers=num_workers_val, persistent_workers=True if num_workers_val > 0 else False)
         # 初始化训练参数
@@ -46,10 +47,11 @@ class HonestClient(Participant):
     
 
     # 评估模型
-    def evaluate_model(self, on_val_set=True):
+    def evaluate_model(self, on_val_set=False):
         if self.model is None: return 0.0, float('inf')
         self.model.eval()
-        loader = self.val_loader if on_val_set else self.train_loader
+        # 修改 num_workers = 0
+        loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, pin_memory=self.device != torch.device("cpu")) if on_val_set else self.val_loader
         if not loader or len(loader.dataset) == 0: return 0.0, float('inf')
         total_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
